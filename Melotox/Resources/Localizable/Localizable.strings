@@ -1,0 +1,13 @@
+"onboarding.page1.title" = "Take a Breath";
+"onboarding.page1.subtitle" = "Pause before you scroll";
+"onboarding.page2.title" = "Melody Gate";
+"onboarding.page2.subtitle" = "A moment of calm before you proceed";
+"onboarding.page3.title" = "You Decide";
+"onboarding.page3.subtitle" = "Choose how long you want to use the app";
+"intervention.question" = "Do you really need this app right now?";
+"intervention.yes" = "Yes, I need it";
+"intervention.no" = "No, I'll pass";
+"unlock.title" = "Choose your time";
+"melodygate.instruction" = "Tap when the orb reaches the circle";
+"melodygate.failed" = "Let's try again";
+"melodygate.complete" = "Well done!";

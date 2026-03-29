@@ -1,0 +1,15 @@
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+build/
+.build/
+*.ipa
+*.dSYM.zip
+Config/Secrets.xcconfig
+.DS_Store
+Pods/
+*.moved-aside
+*.hmap
+*.xccheckout
+*.xcscmblueprint
+.swiftpm/
