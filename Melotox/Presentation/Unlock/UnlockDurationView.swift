@@ -3,14 +3,14 @@ import SwiftUI
 struct UnlockDurationView: View {
     @ObservedObject var viewModel: UnlockViewModel
 
-    private let durations = [5, 10, 15]
+    @State private var sliderValue: Double = 15
 
     var body: some View {
         ZStack {
             Color(hex: "0D0D0D")
                 .ignoresSafeArea()
 
-            VStack(spacing: 32) {
+            VStack(spacing: 40) {
                 Spacer()
 
                 // MARK: - Header
@@ -29,22 +29,58 @@ struct UnlockDurationView: View {
                         .foregroundStyle(Color.white.opacity(0.5))
                 }
 
-                // MARK: - Duration Cards
+                // MARK: - Circular Display
+                ZStack {
+                    Circle()
+                        .stroke(Color(hex: "1A1A2E"), lineWidth: 8)
+                        .frame(width: 180, height: 180)
+
+                    Circle()
+                        .trim(from: 0, to: sliderValue / 60.0)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color(hex: "7C3AED"), Color(hex: "A78BFA")],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                        )
+                        .frame(width: 180, height: 180)
+                        .rotationEffect(.degrees(-90))
+
+                    VStack(spacing: 4) {
+                        Text("\(Int(sliderValue))")
+                            .font(.system(size: 56, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+
+                        Text("minutes")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundStyle(Color.white.opacity(0.5))
+                    }
+                }
+
+                // MARK: - Slider
                 if viewModel.isLoading {
                     ProgressView()
                         .tint(Color(hex: "A78BFA"))
                 } else {
-                    HStack(spacing: 16) {
-                        ForEach(durations, id: \.self) { minutes in
-                            DurationCard(
-                                minutes: minutes,
-                                isSelected: viewModel.selectedDuration == minutes
-                            ) {
-                                viewModel.selectDuration(minutes)
-                            }
+                    VStack(spacing: 12) {
+                        Slider(value: $sliderValue, in: 1...60, step: 1)
+                            .tint(Color(hex: "7C3AED"))
+                            .padding(.horizontal, 32)
+
+                        HStack {
+                            Text("1 min")
+                                .font(.caption2)
+                                .foregroundStyle(Color.white.opacity(0.35))
+                            Spacer()
+                            Text("60 min")
+                                .font(.caption2)
+                                .foregroundStyle(Color.white.opacity(0.35))
                         }
+                        .padding(.horizontal, 36)
                     }
-                    .padding(.horizontal, 20)
                 }
 
                 // MARK: - Error
@@ -54,61 +90,32 @@ struct UnlockDurationView: View {
                         .foregroundStyle(.red.opacity(0.9))
                 }
 
-                Spacer()
-                Spacer()
-            }
-        }
-    }
-}
-
-// MARK: - Duration Card
-
-private struct DurationCard: View {
-    let minutes: Int
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Text("\(minutes)")
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
-                    .foregroundStyle(isSelected ? .white : Color(hex: "C4B5FD"))
-
-                Text("min")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(Color.white.opacity(0.5))
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 24)
-            .background(
-                isSelected
-                    ? AnyShapeStyle(
-                        LinearGradient(
-                            colors: [Color(hex: "7C3AED"), Color(hex: "5B21B6")],
-                            startPoint: .top,
-                            endPoint: .bottom
+                // MARK: - Confirm Button
+                Button {
+                    viewModel.selectDuration(Int(sliderValue))
+                } label: {
+                    Text("Confirm")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(
+                            LinearGradient(
+                                colors: [Color(hex: "7C3AED"), Color(hex: "5B21B6")],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
                         )
-                    )
-                    : AnyShapeStyle(Color(hex: "1A1A2E"))
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 20))
-            .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(
-                        isSelected ? Color(hex: "A78BFA").opacity(0.6) : Color.clear,
-                        lineWidth: 1.5
-                    )
-            )
-            .shadow(
-                color: isSelected ? Color(hex: "7C3AED").opacity(0.4) : Color.clear,
-                radius: 12,
-                x: 0,
-                y: 4
-            )
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+                .padding(.horizontal, 32)
+                .disabled(viewModel.isLoading)
+                .opacity(viewModel.isLoading ? 0.5 : 1.0)
+
+                Spacer()
+            }
         }
-        .buttonStyle(.plain)
     }
 }
 

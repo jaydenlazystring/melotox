@@ -9,7 +9,7 @@ enum AppRoute: Equatable, Sendable {
     case home
     case appSelection
     case intervention(appToken: String)
-    case melodyGate
+    case melodyGate(appToken: String)
     case unlockDuration(appToken: String)
 }
 
@@ -54,18 +54,19 @@ final class AppCoordinator: ObservableObject {
         currentRoute = .intervention(appToken: appToken)
     }
 
-    func completeMelodyGate() {
-        // After melody gate completes, navigate to unlock duration screen.
-        // The appToken is carried from the previous route context.
-        if case .melodyGate = currentRoute {
-            // Retrieve the app token from the active session context.
-            // The ViewModel should call navigateTo directly with the token.
-        }
-        currentRoute = .melodyGate
+    func proceedToMelodyGate(appToken: String) {
+        currentRoute = .melodyGate(appToken: appToken)
+    }
+
+    func completeMelodyGate(appToken: String) {
+        currentRoute = .unlockDuration(appToken: appToken)
     }
 
     func grantUnlock(minutes: Int) {
-        // After unlock is granted, return to home.
+        currentRoute = .home
+    }
+
+    func dismissIntervention() {
         currentRoute = .home
     }
 }

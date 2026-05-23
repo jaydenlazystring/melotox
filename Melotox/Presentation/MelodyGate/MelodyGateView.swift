@@ -41,7 +41,7 @@ struct MelodyGateView: View {
                 Spacer()
 
                 // Tap instruction
-                Text("Tap when the orb hits the bar")
+                Text("Hold and follow the beam")
                     .font(.title3)
                     .fontWeight(.medium)
                     .foregroundStyle(.white)

@@ -10,44 +10,64 @@ protocol MelodyGateSceneDelegate: AnyObject {
 
 // MARK: - MelodyGateScene
 
-/// A minimal SpriteKit rhythm scene.
+/// A SpriteKit scene implementing a hold-and-follow beam mechanic.
 ///
-/// Notes (glowing orbs) fall down a single centre lane. The player taps when
-/// a note overlaps the hit-zone bar near the bottom of the screen.
+/// A neon beam flows from top to bottom, zigzagging left and right. The player
+/// must press and hold their finger on the hit zone, tracking the beam's
+/// horizontal position as it moves. Accuracy is measured each frame; too many
+/// cumulative miss-frames cause the gate to fail. Surviving for the full
+/// duration completes the gate.
+///
 /// The scene does **not** manage audio -- that responsibility belongs to the
 /// owning ViewModel.
 final class MelodyGateScene: SKScene {
 
     // MARK: - Configuration
 
-    /// Maximum allowed misses before the gate fails.
-    private let maxMisses: Int = 2
+    /// Total gate duration in seconds.
+    private let gateDuration: TimeInterval = 60.0
 
-    /// Seconds a note takes to fall from spawn to off-screen.
-    private let noteFallDuration: TimeInterval = 3.0
+    /// Seconds of upcoming path visible above the hit zone.
+    private let previewWindow: TimeInterval = 3.0
 
-    /// Vertical fraction (from bottom) where the hit-zone sits.
+    /// Vertical fraction (from bottom) where the hit zone sits.
     private let hitZoneFraction: CGFloat = 0.15
 
-    /// Vertical tolerance (points) around the hit-zone centre.
-    private let hitZoneTolerance: CGFloat = 40.0
+    /// Horizontal tolerance in points -- finger must be within this distance.
+    private let hitTolerance: CGFloat = 50.0
+
+    /// Maximum cumulative miss-frames before the gate fails (~3 seconds at 60fps).
+    private let maxMissFrames: Int = 180
+
+    // MARK: - Stream Path
+
+    private var streamPath: StreamPath = .defaultPath()
 
     // MARK: - State
 
-    private var notePattern: NotePattern = .defaultPattern()
-    private var noteIndex: Int = 0
-    private var missCount: Int = 0
     private var sceneStartTime: TimeInterval?
     private var isRunning: Bool = false
+    private var holdFrames: Int = 0
+    private var missFrames: Int = 0
 
-    /// Currently live (falling) note nodes keyed by their unique name.
-    private var activeNotes: [String: SKNode] = [:]
+    /// Whether the user's finger is currently down.
+    private var isTouching: Bool = false
+
+    /// Current X position of the user's finger (in scene coordinates).
+    private var fingerX: CGFloat = 0.0
 
     weak var gateDelegate: MelodyGateSceneDelegate?
 
-    // MARK: - Computed
+    // MARK: - Nodes
 
-    private var totalNotes: Int { notePattern.count }
+    private var beamNode: SKShapeNode?
+    private var beamGlowNode: SKShapeNode?
+    private var hitZoneBar: SKShapeNode?
+    private var hitZoneIndicator: SKShapeNode?
+    private var hitZoneGlow: SKShapeNode?
+    private var trailEmitter: SKEmitterNode?
+
+    // MARK: - Computed
 
     private var hitZoneY: CGFloat {
         size.height * hitZoneFraction
@@ -55,19 +75,47 @@ final class MelodyGateScene: SKScene {
 
     // MARK: - Public Setup
 
-    /// Call before presenting the scene to supply a custom pattern.
-    func configure(pattern: NotePattern) {
-        notePattern = pattern
+    /// Supply a custom stream path before presenting the scene.
+    func configure(path: StreamPath) {
+        streamPath = path
+    }
+
+    /// Reset the scene for a retry.
+    func resetSession() {
+        removeAllChildren()
+        removeAllActions()
+
+        sceneStartTime = nil
+        isRunning = false
+        holdFrames = 0
+        missFrames = 0
+        isTouching = false
+        fingerX = 0.0
+
+        beamNode = nil
+        beamGlowNode = nil
+        hitZoneBar = nil
+        hitZoneIndicator = nil
+        hitZoneGlow = nil
+        trailEmitter = nil
+
+        streamPath = .defaultPath()
+
+        if let view = self.view {
+            didMove(to: view)
+        }
     }
 
     // MARK: - Scene Lifecycle
 
     override func didMove(to view: SKView) {
         backgroundColor = .black
-        anchorPoint = CGPoint(x: 0.5, y: 0)
+        anchorPoint = CGPoint(x: 0, y: 0)
 
         buildBackground()
         buildHitZone()
+        buildBeam()
+        buildTrailEmitter()
         buildParticles()
 
         isRunning = true
@@ -82,120 +130,203 @@ final class MelodyGateScene: SKScene {
         }
 
         let elapsed = currentTime - (sceneStartTime ?? currentTime)
-        spawnNotesIfNeeded(elapsed: elapsed)
+
+        // Check for completion.
+        if elapsed >= gateDuration {
+            isRunning = false
+            gateDelegate?.didComplete()
+            return
+        }
+
+        // Current beam X at the hit zone.
+        let beamFraction = streamPath.xFraction(at: elapsed)
+        let beamX = beamFraction * size.width
+
+        // Update beam visual.
+        updateBeamPath(elapsed: elapsed)
+
+        // Update hit zone indicator position.
+        hitZoneIndicator?.position.x = beamX
+        hitZoneGlow?.position.x = beamX
+
+        // Scoring: check finger proximity.
+        if isTouching && abs(fingerX - beamX) <= hitTolerance {
+            holdFrames += 1
+            applyHoldFeedback()
+        } else {
+            missFrames += 1
+            applyMissFeedback()
+
+            if missFrames >= maxMissFrames {
+                isRunning = false
+                gateDelegate?.didFail()
+                return
+            }
+        }
+
+        // Update trail emitter position.
+        trailEmitter?.position = CGPoint(x: beamX, y: hitZoneY)
+        trailEmitter?.particleBirthRate = (isTouching && abs(fingerX - beamX) <= hitTolerance) ? 30 : 0
     }
 
     // MARK: - Touch Handling
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard isRunning else { return }
+        guard isRunning, let touch = touches.first else { return }
+        isTouching = true
+        fingerX = touch.location(in: self).x
+    }
 
-        // Find the first active note inside the hit zone.
-        var hitNote: String?
-        for (name, node) in activeNotes {
-            let nodeY = node.position.y
-            if abs(nodeY - hitZoneY) <= hitZoneTolerance {
-                hitNote = name
-                break
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard isRunning, let touch = touches.first else { return }
+        fingerX = touch.location(in: self).x
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        isTouching = false
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        isTouching = false
+    }
+
+    // MARK: - Beam Rendering
+
+    private func buildBeam() {
+        let beam = SKShapeNode()
+        beam.strokeColor = SKColor(red: 0.55, green: 0.30, blue: 1.0, alpha: 0.9)
+        beam.lineWidth = 3.0
+        beam.lineCap = .round
+        beam.zPosition = 10
+        beam.isAntialiased = true
+        addChild(beam)
+        beamNode = beam
+
+        let glow = SKShapeNode()
+        glow.strokeColor = SKColor(red: 0.40, green: 0.80, blue: 1.0, alpha: 0.3)
+        glow.lineWidth = 12.0
+        glow.lineCap = .round
+        glow.zPosition = 9
+        glow.isAntialiased = true
+        addChild(glow)
+        beamGlowNode = glow
+    }
+
+    /// Rebuild the beam's CGPath each frame to reflect current scroll position.
+    private func updateBeamPath(elapsed: TimeInterval) {
+        let path = CGMutablePath()
+
+        // The beam shows from current time (at hit zone) up to previewWindow seconds ahead (at top).
+        // We sample the stream path and map time -> screen position.
+        let steps = 60
+        let timeStart = elapsed                        // bottom (hit zone)
+        let timeEnd = elapsed + previewWindow          // top of visible beam
+
+        let yBottom = hitZoneY
+        let yTop = size.height + 20 // slightly off-screen top
+
+        for i in 0...steps {
+            let fraction = CGFloat(i) / CGFloat(steps)
+            let t = timeStart + Double(fraction) * (timeEnd - timeStart)
+            let xFrac = streamPath.xFraction(at: t)
+            let x = xFrac * size.width
+            let y = yBottom + fraction * (yTop - yBottom)
+
+            if i == 0 {
+                path.move(to: CGPoint(x: x, y: y))
+            } else {
+                path.addLine(to: CGPoint(x: x, y: y))
             }
         }
 
-        if let name = hitNote {
-            burstNote(named: name)
-        } else {
-            // Tap with nothing in the zone counts as a miss.
-            registerMiss()
-        }
+        beamNode?.path = path
+        beamGlowNode?.path = path
     }
 
-    // MARK: - Note Spawning
+    // MARK: - Hit Zone
 
-    private func spawnNotesIfNeeded(elapsed: TimeInterval) {
-        while noteIndex < totalNotes {
-            let spawnTime = notePattern.notes[noteIndex]
-            guard elapsed >= spawnTime else { break }
-            spawnNote(index: noteIndex)
-            noteIndex += 1
-        }
+    private func buildHitZone() {
+        // Full-width horizontal bar.
+        let bar = SKShapeNode(rectOf: CGSize(width: size.width * 0.85, height: 3),
+                              cornerRadius: 1.5)
+        bar.name = "hitZone"
+        bar.position = CGPoint(x: size.width / 2, y: hitZoneY)
+        bar.fillColor = SKColor(red: 0.72, green: 0.58, blue: 1.0, alpha: 0.3)
+        bar.strokeColor = .clear
+        bar.glowWidth = 4
+        bar.zPosition = 5
+        addChild(bar)
+        hitZoneBar = bar
+
+        // Glow circle behind the indicator.
+        let glow = SKShapeNode(circleOfRadius: 28)
+        glow.position = CGPoint(x: size.width / 2, y: hitZoneY)
+        glow.fillColor = SKColor(red: 0.40, green: 0.80, blue: 1.0, alpha: 0.10)
+        glow.strokeColor = .clear
+        glow.zPosition = 6
+        addChild(glow)
+        hitZoneGlow = glow
+
+        // Small circle indicator where the beam crosses the hit zone.
+        let indicator = SKShapeNode(circleOfRadius: 14)
+        indicator.position = CGPoint(x: size.width / 2, y: hitZoneY)
+        indicator.fillColor = SKColor(red: 0.40, green: 0.80, blue: 1.0, alpha: 0.8)
+        indicator.strokeColor = SKColor(red: 0.55, green: 0.30, blue: 1.0, alpha: 0.6)
+        indicator.lineWidth = 2
+        indicator.glowWidth = 6
+        indicator.zPosition = 12
+        addChild(indicator)
+        hitZoneIndicator = indicator
+
+        // Subtle breathing pulse on the indicator.
+        let grow = SKAction.scale(to: 1.15, duration: 0.8)
+        grow.timingMode = .easeInEaseOut
+        let shrink = SKAction.scale(to: 0.9, duration: 0.8)
+        shrink.timingMode = .easeInEaseOut
+        indicator.run(SKAction.repeatForever(SKAction.sequence([grow, shrink])))
     }
 
-    private func spawnNote(index: Int) {
-        let name = "note_\(index)"
+    // MARK: - Trail Emitter
 
-        let note = SKShapeNode(circleOfRadius: 22)
-        note.name = name
-        note.position = CGPoint(x: 0, y: size.height + 30)
-        note.fillColor = SKColor(red: 0.58, green: 0.44, blue: 0.86, alpha: 1.0)  // purple
-        note.strokeColor = SKColor(red: 0.72, green: 0.58, blue: 1.0, alpha: 0.6)
-        note.lineWidth = 3
-        note.glowWidth = 8
-        note.zPosition = 10
-
-        addChild(note)
-        activeNotes[name] = note
-
-        // Fall action: move to below the hit zone, then mark as missed and remove.
-        let destination = CGPoint(x: 0, y: -40)
-        let fall = SKAction.move(to: destination, duration: noteFallDuration)
-
-        let cleanup = SKAction.run { [weak self] in
-            self?.handleNoteMissedByFalling(name: name)
-        }
-
-        let remove = SKAction.removeFromParent()
-        note.run(SKAction.sequence([fall, cleanup, remove]))
+    private func buildTrailEmitter() {
+        let emitter = SKEmitterNode()
+        emitter.particleBirthRate = 0  // starts off, enabled when holding correctly
+        emitter.numParticlesToEmit = 0
+        emitter.particleLifetime = 0.6
+        emitter.particleLifetimeRange = 0.2
+        emitter.emissionAngle = .pi / 2  // upward
+        emitter.emissionAngleRange = .pi / 4
+        emitter.particleSpeed = 40
+        emitter.particleSpeedRange = 15
+        emitter.particleAlpha = 0.6
+        emitter.particleAlphaSpeed = -1.0
+        emitter.particleScale = 0.05
+        emitter.particleScaleSpeed = -0.05
+        emitter.particleColor = SKColor(red: 0.40, green: 0.80, blue: 1.0, alpha: 1.0)
+        emitter.particleColorBlendFactor = 1.0
+        emitter.particleBlendMode = .add
+        emitter.position = CGPoint(x: size.width / 2, y: hitZoneY)
+        emitter.zPosition = 15
+        addChild(emitter)
+        trailEmitter = emitter
     }
 
-    // MARK: - Hit / Miss Logic
+    // MARK: - Visual Feedback
 
-    private func burstNote(named name: String) {
-        guard let node = activeNotes.removeValue(forKey: name) else { return }
-        node.removeAllActions()
+    private func applyHoldFeedback() {
+        beamNode?.strokeColor = SKColor(red: 0.50, green: 0.85, blue: 1.0, alpha: 1.0)
+        beamGlowNode?.strokeColor = SKColor(red: 0.40, green: 0.80, blue: 1.0, alpha: 0.45)
 
-        // Burst animation.
-        let scaleUp = SKAction.scale(to: 2.5, duration: 0.15)
-        let fadeOut = SKAction.fadeOut(withDuration: 0.15)
-        let burst = SKAction.group([scaleUp, fadeOut])
-        let remove = SKAction.removeFromParent()
-
-        node.run(SKAction.sequence([burst, remove]))
-
-        // Emit a small particle burst.
-        if let particles = SKEmitterNode.noteBurstEmitter() {
-            particles.position = node.position
-            particles.zPosition = 15
-            addChild(particles)
-            particles.run(SKAction.sequence([
-                SKAction.wait(forDuration: 0.6),
-                SKAction.removeFromParent()
-            ]))
-        }
-
-        checkCompletion()
+        hitZoneIndicator?.fillColor = SKColor(red: 0.40, green: 0.90, blue: 1.0, alpha: 0.9)
+        hitZoneGlow?.fillColor = SKColor(red: 0.40, green: 0.80, blue: 1.0, alpha: 0.15)
     }
 
-    private func handleNoteMissedByFalling(name: String) {
-        guard activeNotes.removeValue(forKey: name) != nil else { return }
-        registerMiss()
-    }
+    private func applyMissFeedback() {
+        beamNode?.strokeColor = SKColor(red: 0.55, green: 0.30, blue: 1.0, alpha: 0.5)
+        beamGlowNode?.strokeColor = SKColor(red: 0.40, green: 0.80, blue: 1.0, alpha: 0.12)
 
-    private func registerMiss() {
-        missCount += 1
-        pulseHitZoneRed()
-
-        if missCount > maxMisses {
-            isRunning = false
-            gateDelegate?.didFail()
-        } else {
-            checkCompletion()
-        }
-    }
-
-    private func checkCompletion() {
-        // All notes have been spawned and none remain active.
-        guard noteIndex >= totalNotes, activeNotes.isEmpty else { return }
-        isRunning = false
-        gateDelegate?.didComplete()
+        hitZoneIndicator?.fillColor = SKColor(red: 0.80, green: 0.25, blue: 0.25, alpha: 0.7)
+        hitZoneGlow?.fillColor = SKColor(red: 0.80, green: 0.25, blue: 0.25, alpha: 0.10)
     }
 
     // MARK: - Scene Construction
@@ -203,71 +334,22 @@ final class MelodyGateScene: SKScene {
     private func buildBackground() {
         let bg = SKSpriteNode(color: SKColor(red: 0.05, green: 0.03, blue: 0.12, alpha: 1.0),
                               size: size)
-        bg.position = CGPoint(x: 0, y: size.height / 2)
+        bg.position = CGPoint(x: size.width / 2, y: size.height / 2)
         bg.zPosition = -10
         addChild(bg)
     }
 
-    private func buildHitZone() {
-        let bar = SKShapeNode(rectOf: CGSize(width: size.width * 0.6, height: 4),
-                              cornerRadius: 2)
-        bar.name = "hitZone"
-        bar.position = CGPoint(x: 0, y: hitZoneY)
-        bar.fillColor = SKColor(red: 0.72, green: 0.58, blue: 1.0, alpha: 0.5)
-        bar.strokeColor = .clear
-        bar.glowWidth = 6
-        bar.zPosition = 5
-
-        // Subtle breathing pulse.
-        let grow = SKAction.scaleX(to: 1.05, y: 1.0, duration: 1.2)
-        let shrink = SKAction.scaleX(to: 0.95, y: 1.0, duration: 1.2)
-        bar.run(SKAction.repeatForever(SKAction.sequence([grow, shrink])))
-
-        addChild(bar)
-    }
-
     private func buildParticles() {
         guard let emitter = SKEmitterNode.ambientOrbEmitter(sceneSize: size) else { return }
-        emitter.position = CGPoint(x: 0, y: size.height / 2)
+        emitter.position = CGPoint(x: size.width / 2, y: size.height / 2)
         emitter.zPosition = -5
         addChild(emitter)
-    }
-
-    // MARK: - Visual Feedback
-
-    private func pulseHitZoneRed() {
-        guard let bar = childNode(withName: "hitZone") as? SKShapeNode else { return }
-        let original = bar.fillColor
-        let flash = SKAction.run { bar.fillColor = SKColor(red: 1.0, green: 0.3, blue: 0.3, alpha: 0.7) }
-        let wait = SKAction.wait(forDuration: 0.25)
-        let restore = SKAction.run { bar.fillColor = original }
-        bar.run(SKAction.sequence([flash, wait, restore]))
     }
 }
 
 // MARK: - SKEmitterNode Helpers
 
 private extension SKEmitterNode {
-
-    /// Small burst emitted when a note is successfully tapped.
-    static func noteBurstEmitter() -> SKEmitterNode? {
-        let emitter = SKEmitterNode()
-        emitter.particleBirthRate = 40
-        emitter.numParticlesToEmit = 12
-        emitter.particleLifetime = 0.5
-        emitter.particleLifetimeRange = 0.2
-        emitter.emissionAngleRange = .pi * 2
-        emitter.particleSpeed = 80
-        emitter.particleSpeedRange = 30
-        emitter.particleAlpha = 0.8
-        emitter.particleAlphaSpeed = -1.6
-        emitter.particleScale = 0.08
-        emitter.particleScaleSpeed = -0.1
-        emitter.particleColor = SKColor(red: 0.72, green: 0.58, blue: 1.0, alpha: 1.0)
-        emitter.particleColorBlendFactor = 1.0
-        emitter.particleBlendMode = .add
-        return emitter
-    }
 
     /// Floating ambient orbs drifting slowly across the background.
     static func ambientOrbEmitter(sceneSize: CGSize) -> SKEmitterNode? {

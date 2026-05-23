@@ -11,23 +11,19 @@ struct StartInterventionUseCase: Sendable {
 
     func execute(appToken: String, answer: QuestionAnswer) async throws -> InterventionSession {
         let tracks = audioRepository.getAvailableTracks()
-        guard let track = tracks.randomElement() else {
-            throw MelotoxError.audioPlaybackFailed
-        }
+        let trackId = tracks.randomElement()?.id ?? UUID()
 
         let session = InterventionSession(
             id: UUID(),
             appToken: appToken,
             questionAnswer: answer,
-            audioTrackId: track.id,
+            audioTrackId: trackId,
             startedAt: Date(),
             completedAt: nil,
             result: .inProgress
         )
 
         try await sessionRepository.saveSession(session)
-        try await audioRepository.playTrack(track)
-
         return session
     }
 }

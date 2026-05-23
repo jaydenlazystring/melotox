@@ -100,6 +100,35 @@ final class DependencyContainer {
             signInWithAppleUseCase: signInWithAppleUseCase
         )
     }
+
+    func makeHomeViewModel() -> HomeViewModel {
+        HomeViewModel(restrictionRepository: restrictionRepository)
+    }
+
+    func makeAppSelectionViewModel() -> AppSelectionViewModel {
+        AppSelectionViewModel(
+            selectRestrictedAppsUseCase: selectRestrictedAppsUseCase,
+            restrictionRepository: restrictionRepository
+        )
+    }
+
+    func makeInterventionViewModel() -> InterventionViewModel {
+        InterventionViewModel(startInterventionUseCase: startInterventionUseCase)
+    }
+
+    func makeMelodyGateViewModel() -> MelodyGateViewModel {
+        MelodyGateViewModel(
+            audioRepository: audioRepository,
+            completeMelodyGateUseCase: completeMelodyGateUseCase
+        )
+    }
+
+    func makeUnlockViewModel(appToken: String) -> UnlockViewModel {
+        UnlockViewModel(
+            appToken: appToken,
+            grantUnlockTimeUseCase: grantUnlockTimeUseCase
+        )
+    }
 }
 
 // MARK: - KeychainSessionStorage

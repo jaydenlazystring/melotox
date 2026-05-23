@@ -55,20 +55,19 @@ final class MelodyGateViewModel: ObservableObject, MelodyGateSceneDelegate {
         let tracks = audioRepository.getAvailableTracks()
         currentTrack = tracks.randomElement()
 
-        guard let track = currentTrack else {
-            errorMessage = "No audio tracks available."
-            return
-        }
-
-        Task {
-            do {
-                try await audioRepository.playTrack(track)
-                isPlaying = true
-                startTimer()
-            } catch {
-                errorMessage = "Failed to start audio playback."
+        // Try to play audio, but proceed even if files are missing
+        if let track = currentTrack {
+            Task {
+                do {
+                    try await audioRepository.playTrack(track)
+                } catch {
+                    // Audio file not found — continue without music
+                }
             }
         }
+
+        isPlaying = true
+        startTimer()
     }
 
     func onTapResult(success: Bool) {
@@ -104,6 +103,7 @@ final class MelodyGateViewModel: ObservableObject, MelodyGateSceneDelegate {
         isFailed = false
         isCompleted = false
         errorMessage = nil
+        spriteScene.resetSession()
         startGate()
     }
 

@@ -5,7 +5,7 @@ final class UnlockViewModel: ObservableObject {
 
     // MARK: - Published State
 
-    @Published var selectedDuration: Int?
+    @Published var selectedDuration: Int? = 15
     @Published var isGranted = false
     @Published var isLoading = false
     @Published var errorMessage: String?
