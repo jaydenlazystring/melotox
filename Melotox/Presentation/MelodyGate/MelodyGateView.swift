@@ -4,6 +4,9 @@ import SwiftUI
 struct MelodyGateView: View {
     @ObservedObject var viewModel: MelodyGateViewModel
     var onComplete: () -> Void
+    var onQuit: () -> Void
+
+    @State private var showQuitAlert = false
 
     var body: some View {
         ZStack {
@@ -11,7 +14,6 @@ struct MelodyGateView: View {
             Color(hex: "0D0D0D")
                 .ignoresSafeArea()
 
-            // Ambient radial backdrop
             RadialGradient(
                 colors: [
                     Color(hex: "5B21B6").opacity(0.15),
@@ -29,62 +31,93 @@ struct MelodyGateView: View {
                 .allowsHitTesting(true)
 
             // MARK: - UI Overlay
-            VStack(spacing: 24) {
-                // Track name at top
-                if let track = viewModel.currentTrack {
-                    Text(track.title)
-                        .font(.headline)
-                        .foregroundStyle(Color(hex: "A78BFA"))
-                        .padding(.top, 60)
+            VStack(spacing: 0) {
+                // Top bar: quit button + track name
+                HStack {
+                    Button {
+                        showQuitAlert = true
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.white.opacity(0.7))
+                            .frame(width: 40, height: 40)
+                            .background(Color.white.opacity(0.1))
+                            .clipShape(Circle())
+                    }
+
+                    Spacer()
+
+                    if let track = viewModel.currentTrack {
+                        Text(track.title)
+                            .font(.headline)
+                            .foregroundStyle(Color(hex: "A78BFA"))
+                    }
+
+                    Spacer()
+                    // Spacer to balance the X button
+                    Color.clear.frame(width: 40, height: 40)
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 56)
 
                 Spacer()
 
-                // Tap instruction
-                Text("Hold and follow the beam")
-                    .font(.title3)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.white)
+                // Bottom: instruction + progress
+                VStack(spacing: 12) {
+                    Text(viewModel.isWaitingForStart ? "Touch to begin" : "Follow the light")
+                        .font(.title3)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.white.opacity(viewModel.isWaitingForStart ? 1.0 : 0.7))
+                        .animation(.easeInOut, value: viewModel.isWaitingForStart)
 
-                // Progress bar
-                ProgressBarView(progress: viewModel.progress, color: Color(hex: "7C3AED"))
-                    .padding(.horizontal, 40)
+                    ProgressBarView(progress: viewModel.progress, color: Color(hex: "7C3AED"))
+                        .padding(.horizontal, 40)
 
-                // Time remaining
-                let remaining = max(0, Int(60.0 * (1.0 - viewModel.progress)))
-                Text("\(remaining)s remaining")
-                    .font(.caption)
-                    .foregroundStyle(Color.white.opacity(0.4))
-                    .monospacedDigit()
-
-                Spacer()
-                    .frame(height: 40)
+                    let remaining = max(0, Int(60.0 * (1.0 - viewModel.progress)))
+                    Text("\(remaining)s")
+                        .font(.caption)
+                        .foregroundStyle(Color.white.opacity(0.4))
+                        .monospacedDigit()
+                }
+                .padding(.bottom, 40)
             }
             .allowsHitTesting(false)
+
+            // Make only the quit button tappable
+            VStack {
+                HStack {
+                    Button {
+                        showQuitAlert = true
+                    } label: {
+                        Color.clear.frame(width: 40, height: 40)
+                    }
+                    .padding(.leading, 16)
+                    .padding(.top, 56)
+                    Spacer()
+                }
+                Spacer()
+            }
 
             // MARK: - Failure Overlay
             if viewModel.isFailed {
                 failureOverlay
-            }
-
-            // MARK: - Error
-            if let errorMessage = viewModel.errorMessage {
-                VStack {
-                    Spacer()
-                    Text(errorMessage)
-                        .font(.footnote)
-                        .foregroundStyle(.red.opacity(0.9))
-                        .padding(.bottom, 20)
-                }
             }
         }
         .onAppear {
             viewModel.startGate()
         }
         .onChange(of: viewModel.isCompleted) { _, completed in
-            if completed {
-                onComplete()
+            if completed { onComplete() }
+        }
+        .alert("Give up?", isPresented: $showQuitAlert) {
+            Button("Keep going", role: .cancel) {}
+            Button("Quit", role: .destructive) {
+                viewModel.stopGate()
+                onQuit()
             }
+        } message: {
+            Text("Your progress will be lost.")
         }
     }
 
@@ -119,17 +152,20 @@ struct MelodyGateView: View {
 #Preview {
     MelodyGateView(
         viewModel: {
+            let repo = PreviewSessionRepo()
             let vm = MelodyGateViewModel(
                 audioRepository: PreviewAudioRepo(),
                 completeMelodyGateUseCase: CompleteMelodyGateUseCase(
-                    sessionRepository: PreviewSessionRepo()
-                )
+                    sessionRepository: repo
+                ),
+                sessionRepository: repo
             )
             vm.currentTrack = AudioTrack(id: UUID(), title: "Ocean Breeze", fileName: "ocean.mp3", category: "ambient")
             vm.progress = 0.35
             return vm
         }(),
-        onComplete: {}
+        onComplete: {},
+        onQuit: {}
     )
 }
 
@@ -139,6 +175,8 @@ private struct PreviewSessionRepo: SessionRepository {
     func saveSession(_ session: InterventionSession) async throws {}
     func loadCurrentSession() async throws -> InterventionSession? { nil }
     func clearCurrentSession() async throws {}
+    func recordActivity(_ record: ActivityRecord) async throws {}
+    func loadActivityHistory() async throws -> [ActivityRecord] { [] }
 }
 
 private struct PreviewAudioRepo: AudioRepository {

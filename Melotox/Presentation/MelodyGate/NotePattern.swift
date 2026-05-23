@@ -2,16 +2,15 @@ import Foundation
 
 // MARK: - StreamPath
 
-/// Describes the beam's horizontal path over time for a melody-gate sequence.
-/// Each control point defines where the beam should be (as a fraction of screen width)
-/// at a given timestamp. The beam smoothly interpolates between points.
+/// Describes the target indicator's 2D path over time for a melody-gate sequence.
+/// Each control point defines where the target should be (as fractions of screen size)
+/// at a given timestamp. The target smoothly interpolates between points.
 struct StreamPath: Codable, Sendable {
 
     struct ControlPoint: Codable, Sendable {
-        /// Seconds from the start of the session.
         let time: TimeInterval
-        /// Horizontal position as a fraction: 0.0 = left edge, 1.0 = right edge.
         let xFraction: CGFloat
+        let yFraction: CGFloat
     }
 
     let controlPoints: [ControlPoint]
@@ -19,58 +18,59 @@ struct StreamPath: Codable, Sendable {
 
     // MARK: - Interpolation
 
-    /// Returns the interpolated X fraction at the given time using smooth (cosine) interpolation.
-    func xFraction(at time: TimeInterval) -> CGFloat {
-        guard !controlPoints.isEmpty else { return 0.5 }
+    func position(at time: TimeInterval) -> (x: CGFloat, y: CGFloat) {
+        guard !controlPoints.isEmpty else { return (0.5, 0.5) }
 
         let clamped = max(0, min(time, totalDuration))
 
-        // Before first point
         if clamped <= controlPoints.first!.time {
-            return controlPoints.first!.xFraction
+            return (controlPoints.first!.xFraction, controlPoints.first!.yFraction)
         }
 
-        // After last point
         if clamped >= controlPoints.last!.time {
-            return controlPoints.last!.xFraction
+            return (controlPoints.last!.xFraction, controlPoints.last!.yFraction)
         }
 
-        // Find surrounding control points
         for i in 0..<(controlPoints.count - 1) {
             let a = controlPoints[i]
             let b = controlPoints[i + 1]
 
             if clamped >= a.time && clamped <= b.time {
                 let segmentDuration = b.time - a.time
-                guard segmentDuration > 0 else { return a.xFraction }
+                guard segmentDuration > 0 else { return (a.xFraction, a.yFraction) }
 
                 let t = (clamped - a.time) / segmentDuration
-                // Cosine interpolation for smooth, organic motion
                 let smooth = (1.0 - cos(t * .pi)) / 2.0
-                return a.xFraction + (b.xFraction - a.xFraction) * smooth
+
+                let x = a.xFraction + (b.xFraction - a.xFraction) * smooth
+                let y = a.yFraction + (b.yFraction - a.yFraction) * smooth
+                return (x, y)
             }
         }
 
-        return 0.5
+        return (0.5, 0.5)
     }
 
     // MARK: - Built-in Paths
 
-    /// A gentle zigzag: centre -> right -> left -> right -> left … over 60 seconds.
-    /// Nine direction changes producing a meditative, flowing motion.
+    /// A gentle, flowing path. Direction changes every ~5 seconds.
+    /// Movements are smooth and meditative, not jarring.
     static func defaultPath() -> StreamPath {
         StreamPath(
             controlPoints: [
-                ControlPoint(time: 0.0,  xFraction: 0.50),
-                ControlPoint(time: 6.0,  xFraction: 0.78),
-                ControlPoint(time: 13.0, xFraction: 0.22),
-                ControlPoint(time: 20.0, xFraction: 0.72),
-                ControlPoint(time: 27.0, xFraction: 0.28),
-                ControlPoint(time: 34.0, xFraction: 0.75),
-                ControlPoint(time: 41.0, xFraction: 0.25),
-                ControlPoint(time: 48.0, xFraction: 0.70),
-                ControlPoint(time: 54.0, xFraction: 0.30),
-                ControlPoint(time: 60.0, xFraction: 0.50),
+                ControlPoint(time: 0.0,  xFraction: 0.50, yFraction: 0.50),
+                ControlPoint(time: 5.0,  xFraction: 0.72, yFraction: 0.60),
+                ControlPoint(time: 10.0, xFraction: 0.30, yFraction: 0.45),
+                ControlPoint(time: 15.0, xFraction: 0.68, yFraction: 0.65),
+                ControlPoint(time: 20.0, xFraction: 0.25, yFraction: 0.38),
+                ControlPoint(time: 25.0, xFraction: 0.75, yFraction: 0.55),
+                ControlPoint(time: 30.0, xFraction: 0.35, yFraction: 0.62),
+                ControlPoint(time: 35.0, xFraction: 0.65, yFraction: 0.35),
+                ControlPoint(time: 40.0, xFraction: 0.28, yFraction: 0.55),
+                ControlPoint(time: 45.0, xFraction: 0.70, yFraction: 0.48),
+                ControlPoint(time: 50.0, xFraction: 0.38, yFraction: 0.60),
+                ControlPoint(time: 55.0, xFraction: 0.62, yFraction: 0.42),
+                ControlPoint(time: 60.0, xFraction: 0.50, yFraction: 0.50),
             ],
             totalDuration: 60.0
         )
@@ -78,8 +78,6 @@ struct StreamPath: Codable, Sendable {
 
     // MARK: - JSON Loading
 
-    /// Decodes a `StreamPath` from raw JSON data.
-    /// Returns `nil` if the data is malformed.
     static func fromJSON(data: Data) -> StreamPath? {
         try? JSONDecoder().decode(StreamPath.self, from: data)
     }

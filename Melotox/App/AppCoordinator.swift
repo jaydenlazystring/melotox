@@ -7,6 +7,8 @@ enum AppRoute: Equatable, Sendable {
     case onboarding
     case login
     case home
+    case profile
+    case about
     case appSelection
     case intervention(appToken: String)
     case melodyGate(appToken: String)
@@ -23,6 +25,12 @@ final class AppCoordinator: ObservableObject {
     @Published var currentRoute: AppRoute = .onboarding
     @Published var isAuthenticated: Bool = false
     @Published private(set) var currentUser: User?
+
+    /// Active overlay flow (intervention/melodyGate/unlock) presented on top of tabs.
+    @Published var overlayRoute: AppRoute? = nil
+
+    /// Selected tab in the main tab bar.
+    @Published var selectedTab: MainTab = .home
 
     // MARK: - Init
 
@@ -45,28 +53,31 @@ final class AppCoordinator: ObservableObject {
     func handleLogout() {
         currentUser = nil
         isAuthenticated = false
+        overlayRoute = nil
         currentRoute = .login
     }
 
-    // MARK: - Intervention Flow
+    // MARK: - Intervention Flow (overlay on top of tabs)
 
     func startIntervention(for appToken: String) {
-        currentRoute = .intervention(appToken: appToken)
+        overlayRoute = .intervention(appToken: appToken)
     }
 
     func proceedToMelodyGate(appToken: String) {
-        currentRoute = .melodyGate(appToken: appToken)
+        overlayRoute = .melodyGate(appToken: appToken)
     }
 
     func completeMelodyGate(appToken: String) {
-        currentRoute = .unlockDuration(appToken: appToken)
+        overlayRoute = .unlockDuration(appToken: appToken)
     }
 
     func grantUnlock(minutes: Int) {
+        overlayRoute = nil
         currentRoute = .home
     }
 
     func dismissIntervention() {
+        overlayRoute = nil
         currentRoute = .home
     }
 }

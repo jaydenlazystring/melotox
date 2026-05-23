@@ -16,7 +16,6 @@ struct MelotoxApp: App {
                 }
             }
             .animation(.easeInOut, value: coordinator.isAuthenticated)
-            .animation(.easeInOut, value: coordinator.currentRoute)
         }
     }
 
@@ -42,22 +41,65 @@ struct MelotoxApp: App {
 
     // MARK: - Authenticated Flow
 
-    @ViewBuilder
     private var authenticatedContent: some View {
-        switch coordinator.currentRoute {
-        case .home:
-            HomeScreen(
-                coordinator: coordinator,
-                container: container
-            )
+        ZStack {
+            // Base: Tab bar with Home / Activity / Settings
+            tabbedContent
 
-        case .appSelection:
-            AppSelectionScreen(
-                container: container,
-                onBack: { coordinator.navigateTo(.home) },
-                onSaved: { coordinator.navigateTo(.home) }
-            )
+            // Overlay: full-screen flows (intervention, melodyGate, unlock, profile, appSelection)
+            if let overlayRoute = coordinator.overlayRoute {
+                overlayContent(for: overlayRoute)
+                    .transition(.move(edge: .trailing))
+                    .zIndex(1)
+            }
 
+            if case .profile = coordinator.currentRoute {
+                ProfileScreen(
+                    coordinator: coordinator,
+                    container: container
+                )
+                .transition(.move(edge: .trailing))
+                .zIndex(1)
+            }
+
+            if case .about = coordinator.currentRoute {
+                AboutView(onBack: { coordinator.navigateTo(.home) })
+                    .transition(.move(edge: .trailing))
+                    .zIndex(1)
+            }
+
+            if case .appSelection = coordinator.currentRoute {
+                AppSelectionScreen(
+                    container: container,
+                    onBack: { coordinator.navigateTo(.home) },
+                    onSaved: { coordinator.navigateTo(.home) }
+                )
+                .transition(.move(edge: .trailing))
+                .zIndex(1)
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: coordinator.overlayRoute)
+        .animation(.easeInOut(duration: 0.25), value: coordinator.currentRoute)
+    }
+
+    private var tabbedContent: some View {
+        MainTabView(
+            selectedTab: $coordinator.selectedTab,
+            homeContent: AnyView(
+                HomeScreen(coordinator: coordinator, container: container)
+            ),
+            activityContent: AnyView(
+                ActivityScreen(container: container)
+            ),
+            settingsContent: AnyView(
+                SettingsScreen(coordinator: coordinator, container: container)
+            )
+        )
+    }
+
+    @ViewBuilder
+    private func overlayContent(for route: AppRoute) -> some View {
+        switch route {
         case .intervention(let appToken):
             InterventionScreen(
                 container: container,
@@ -69,7 +111,8 @@ struct MelotoxApp: App {
         case .melodyGate(let appToken):
             MelodyGateView(
                 viewModel: container.makeMelodyGateViewModel(),
-                onComplete: { coordinator.completeMelodyGate(appToken: appToken) }
+                onComplete: { coordinator.completeMelodyGate(appToken: appToken) },
+                onQuit: { coordinator.dismissIntervention() }
             )
 
         case .unlockDuration(let appToken):
@@ -80,10 +123,7 @@ struct MelotoxApp: App {
             )
 
         default:
-            HomeScreen(
-                coordinator: coordinator,
-                container: container
-            )
+            EmptyView()
         }
     }
 
@@ -112,26 +152,10 @@ struct MelotoxApp: App {
         }
         .padding(.bottom, 30)
     }
-
-    private var debugTestInterventionButton: some View {
-        Button {
-            coordinator.startIntervention(for: "com.mock.instagram")
-        } label: {
-            Text("Test Intervention (Debug)")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 10)
-                .background(Color(hex: "7C3AED").opacity(0.6))
-                .clipShape(Capsule())
-        }
-        .padding(.bottom, 30)
-    }
     #endif
 }
 
-// MARK: - Wrapper Screens (own ViewModel lifecycle)
+// MARK: - Wrapper Screens
 
 private struct HomeScreen: View {
     let coordinator: AppCoordinator
@@ -148,7 +172,8 @@ private struct HomeScreen: View {
     var body: some View {
         HomeView(
             viewModel: viewModel,
-            onManageApps: { coordinator.navigateTo(.appSelection) }
+            onManageApps: { coordinator.navigateTo(.appSelection) },
+            onProfileTap: { coordinator.navigateTo(.profile) }
         )
         .onAppear {
             guard let user = coordinator.currentUser else { return }
@@ -162,20 +187,133 @@ private struct HomeScreen: View {
         .overlay(alignment: .bottom) {
             #if DEBUG
             Button {
-                coordinator.startIntervention(for: "com.mock.instagram")
+                if viewModel.isRestrictionActive {
+                    coordinator.startIntervention(for: "com.mock.instagram")
+                }
             } label: {
-                Text("Test Intervention (Debug)")
+                Text(viewModel.isRestrictionActive ? "Test Intervention (Debug)" : "Protection Off")
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
-                    .background(Color(hex: "7C3AED").opacity(0.6))
+                    .background(
+                        viewModel.isRestrictionActive
+                            ? Color(hex: "7C3AED").opacity(0.6)
+                            : Color.gray.opacity(0.3)
+                    )
                     .clipShape(Capsule())
             }
-            .padding(.bottom, 30)
+            .disabled(!viewModel.isRestrictionActive)
+            .padding(.bottom, 90) // above tab bar
             #endif
         }
+    }
+}
+
+private struct ProfileScreen: View {
+    let coordinator: AppCoordinator
+    let container: DependencyContainer
+
+    @StateObject private var viewModel: ProfileViewModel
+
+    init(coordinator: AppCoordinator, container: DependencyContainer) {
+        self.coordinator = coordinator
+        self.container = container
+        _viewModel = StateObject(wrappedValue: container.makeProfileViewModel())
+    }
+
+    var body: some View {
+        ProfileView(
+            viewModel: viewModel,
+            onBack: { coordinator.navigateTo(.home) }
+        )
+        .onAppear {
+            guard let user = coordinator.currentUser else { return }
+            viewModel.loadUser(user)
+        }
+        .onChange(of: viewModel.didSignOut) { _, signedOut in
+            if signedOut { coordinator.handleLogout() }
+        }
+    }
+}
+
+private struct SettingsScreen: View {
+    let coordinator: AppCoordinator
+    let container: DependencyContainer
+
+    var body: some View {
+        ZStack {
+            Color(hex: "0D0D0D")
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Text("Settings")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white)
+                    .padding(.top, 60)
+                    .padding(.bottom, 24)
+
+                VStack(spacing: 0) {
+                    settingsRow(icon: "app.badge.fill", label: "Manage Apps") {
+                        coordinator.navigateTo(.appSelection)
+                    }
+                    Divider().background(Color.white.opacity(0.1))
+                    settingsRow(icon: "person.fill", label: "Profile") {
+                        coordinator.navigateTo(.profile)
+                    }
+                    Divider().background(Color.white.opacity(0.1))
+                    settingsRow(icon: "info.circle", label: "About Melotox") {
+                        coordinator.navigateTo(.about)
+                    }
+                }
+                .background(Color(hex: "1A1A2E"))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .padding(.horizontal, 20)
+
+                Spacer()
+            }
+        }
+    }
+
+    private func settingsRow(icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.body)
+                    .foregroundStyle(Color(hex: "A78BFA"))
+                    .frame(width: 28)
+
+                Text(label)
+                    .font(.body)
+                    .foregroundStyle(.white)
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(Color.white.opacity(0.3))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct ActivityScreen: View {
+    let container: DependencyContainer
+
+    @StateObject private var viewModel: ActivityViewModel
+
+    init(container: DependencyContainer) {
+        self.container = container
+        _viewModel = StateObject(wrappedValue: container.makeActivityViewModel())
+    }
+
+    var body: some View {
+        ActivityView(viewModel: viewModel)
     }
 }
 

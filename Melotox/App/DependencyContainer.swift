@@ -113,14 +113,22 @@ final class DependencyContainer {
     }
 
     func makeInterventionViewModel() -> InterventionViewModel {
-        InterventionViewModel(startInterventionUseCase: startInterventionUseCase)
+        InterventionViewModel(
+            startInterventionUseCase: startInterventionUseCase,
+            sessionRepository: sessionRepository
+        )
     }
 
     func makeMelodyGateViewModel() -> MelodyGateViewModel {
         MelodyGateViewModel(
             audioRepository: audioRepository,
-            completeMelodyGateUseCase: completeMelodyGateUseCase
+            completeMelodyGateUseCase: completeMelodyGateUseCase,
+            sessionRepository: sessionRepository
         )
+    }
+
+    func makeActivityViewModel() -> ActivityViewModel {
+        ActivityViewModel(sessionRepository: sessionRepository)
     }
 
     func makeUnlockViewModel(appToken: String) -> UnlockViewModel {
@@ -128,6 +136,10 @@ final class DependencyContainer {
             appToken: appToken,
             grantUnlockTimeUseCase: grantUnlockTimeUseCase
         )
+    }
+
+    func makeProfileViewModel() -> ProfileViewModel {
+        ProfileViewModel(authRepository: authRepository)
     }
 }
 

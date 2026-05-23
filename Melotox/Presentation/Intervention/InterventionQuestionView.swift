@@ -88,12 +88,14 @@ struct InterventionQuestionView: View {
 }
 
 #Preview {
+    let repo = PreviewSessionRepo()
     InterventionQuestionView(
         viewModel: InterventionViewModel(
             startInterventionUseCase: StartInterventionUseCase(
-                sessionRepository: PreviewSessionRepo(),
+                sessionRepository: repo,
                 audioRepository: PreviewAudioRepo()
-            )
+            ),
+            sessionRepository: repo
         )
     )
 }
@@ -104,6 +106,8 @@ private struct PreviewSessionRepo: SessionRepository {
     func saveSession(_ session: InterventionSession) async throws {}
     func loadCurrentSession() async throws -> InterventionSession? { nil }
     func clearCurrentSession() async throws {}
+    func recordActivity(_ record: ActivityRecord) async throws {}
+    func loadActivityHistory() async throws -> [ActivityRecord] { [] }
 }
 
 private struct PreviewAudioRepo: AudioRepository {

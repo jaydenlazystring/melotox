@@ -3,6 +3,7 @@ import Foundation
 final class SessionRepositoryImpl: SessionRepository {
 
     private static let sessionKey = "com.melotox.currentSession"
+    private static let activityKey = "com.melotox.activityHistory"
 
     private let storage: UserDefaultsStorage
 
@@ -24,5 +25,16 @@ final class SessionRepositoryImpl: SessionRepository {
 
     func clearCurrentSession() async throws {
         storage.remove(forKey: Self.sessionKey)
+    }
+
+    func recordActivity(_ record: ActivityRecord) async throws {
+        var history = (try? await loadActivityHistory()) ?? []
+        history.append(record)
+        try storage.save(history, forKey: Self.activityKey)
+    }
+
+    func loadActivityHistory() async throws -> [ActivityRecord] {
+        let records: [ActivityRecord]? = try storage.load(forKey: Self.activityKey)
+        return records ?? []
     }
 }

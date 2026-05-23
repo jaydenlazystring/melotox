@@ -9,29 +9,28 @@ final class AudioRepositoryImpl: AudioRepository, @unchecked Sendable {
     }
 
     func getAvailableTracks() -> [AudioTrack] {
-        [
-            AudioTrack(
-                id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
-                title: "Ambient Dawn",
-                duration: 60,
-                fileName: "ambient_dawn.mp3",
-                category: "ambient"
-            ),
-            AudioTrack(
-                id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
-                title: "Calm Waves",
-                duration: 60,
-                fileName: "calm_waves.mp3",
-                category: "nature"
-            ),
-            AudioTrack(
-                id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
-                title: "Quiet Forest",
-                duration: 60,
-                fileName: "quiet_forest.mp3",
-                category: "nature"
-            ),
-        ]
+        // Auto-scan bundle for mp3 files and sort by name (01, 02, 03...)
+        guard let urls = Bundle.main.urls(forResourcesWithExtension: "mp3", subdirectory: nil) else {
+            return []
+        }
+
+        return urls
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .enumerated()
+            .map { index, url in
+                let fileName = url.lastPathComponent
+                let name = url.deletingPathExtension().lastPathComponent
+                let paddedIndex = String(format: "%02d", index + 1)
+
+                return AudioTrack(
+                    id: UUID(uuidString: "00000000-0000-0000-0000-\(String(repeating: "0", count: 12 - paddedIndex.count))\(paddedIndex)")
+                        ?? UUID(),
+                    title: "Melotox \(name)",
+                    duration: 60,
+                    fileName: fileName,
+                    category: "ambient"
+                )
+            }
     }
 
     func playTrack(_ track: AudioTrack) async throws {

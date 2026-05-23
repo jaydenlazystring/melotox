@@ -14,6 +14,7 @@ final class InterventionViewModel: ObservableObject {
     // MARK: - Dependencies
 
     private let startInterventionUseCase: StartInterventionUseCase
+    private let sessionRepository: any SessionRepository
 
     // MARK: - Context
 
@@ -21,8 +22,10 @@ final class InterventionViewModel: ObservableObject {
 
     // MARK: - Init
 
-    init(startInterventionUseCase: StartInterventionUseCase) {
+    init(startInterventionUseCase: StartInterventionUseCase,
+         sessionRepository: any SessionRepository) {
         self.startInterventionUseCase = startInterventionUseCase
+        self.sessionRepository = sessionRepository
     }
 
     // MARK: - Actions
@@ -34,6 +37,10 @@ final class InterventionViewModel: ObservableObject {
     func submitAnswer(_ answer: QuestionAnswer) {
         switch answer {
         case .no:
+            Task {
+                let record = ActivityRecord(date: Date(), type: .declined)
+                try? await sessionRepository.recordActivity(record)
+            }
             shouldDismiss = true
 
         case .yes:

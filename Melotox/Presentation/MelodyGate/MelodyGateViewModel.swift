@@ -8,6 +8,7 @@ final class MelodyGateViewModel: ObservableObject, MelodyGateSceneDelegate {
 
     @Published var progress: Double = 0.0
     @Published var isPlaying = false
+    @Published var isWaitingForStart = true
     @Published var isFailed = false
     @Published var isCompleted = false
     @Published var currentTrack: AudioTrack?
@@ -21,6 +22,7 @@ final class MelodyGateViewModel: ObservableObject, MelodyGateSceneDelegate {
 
     private let audioRepository: any AudioRepository
     private let completeMelodyGateUseCase: CompleteMelodyGateUseCase
+    private let sessionRepository: any SessionRepository
 
     // MARK: - Timer
 
@@ -31,49 +33,31 @@ final class MelodyGateViewModel: ObservableObject, MelodyGateSceneDelegate {
 
     init(
         audioRepository: any AudioRepository,
-        completeMelodyGateUseCase: CompleteMelodyGateUseCase
+        completeMelodyGateUseCase: CompleteMelodyGateUseCase,
+        sessionRepository: any SessionRepository
     ) {
         self.audioRepository = audioRepository
         self.completeMelodyGateUseCase = completeMelodyGateUseCase
+        self.sessionRepository = sessionRepository
 
         let scene = MelodyGateScene(size: UIScreen.main.bounds.size)
         scene.scaleMode = .resizeFill
         scene.backgroundColor = .clear
         self.spriteScene = scene
 
-        // Wire up delegate after self is available.
         scene.gateDelegate = self
     }
 
-    nonisolated deinit {
-        // Timer cleanup handled by MainActor-isolated methods
-    }
+    nonisolated deinit {}
 
     // MARK: - Actions
 
     func startGate() {
         let tracks = audioRepository.getAvailableTracks()
         currentTrack = tracks.randomElement()
-
-        // Try to play audio, but proceed even if files are missing
-        if let track = currentTrack {
-            Task {
-                do {
-                    try await audioRepository.playTrack(track)
-                } catch {
-                    // Audio file not found — continue without music
-                }
-            }
-        }
-
-        isPlaying = true
-        startTimer()
-    }
-
-    func onTapResult(success: Bool) {
-        if !success {
-            onSessionFailed()
-        }
+        isWaitingForStart = true
+        isPlaying = false
+        // Audio and timer start when user touches (didStart callback)
     }
 
     func onSessionComplete() {
@@ -82,6 +66,10 @@ final class MelodyGateViewModel: ObservableObject, MelodyGateSceneDelegate {
         isPlaying = false
 
         Task {
+            // Record activity
+            let record = ActivityRecord(date: Date(), type: .completed)
+            try? await sessionRepository.recordActivity(record)
+
             do {
                 _ = try await completeMelodyGateUseCase.execute()
                 isCompleted = true
@@ -98,16 +86,41 @@ final class MelodyGateViewModel: ObservableObject, MelodyGateSceneDelegate {
         isFailed = true
     }
 
+    func stopGate() {
+        timer?.invalidate()
+        audioRepository.stopPlayback()
+        isPlaying = false
+    }
+
     func retryGate() {
         progress = 0.0
         isFailed = false
         isCompleted = false
+        isWaitingForStart = true
         errorMessage = nil
         spriteScene.resetSession()
         startGate()
     }
 
     // MARK: - MelodyGateSceneDelegate
+
+    nonisolated func didStart() {
+        Task { @MainActor in
+            isWaitingForStart = false
+            isPlaying = true
+
+            // Start audio
+            if let track = currentTrack {
+                do {
+                    try await audioRepository.playTrack(track)
+                } catch {
+                    // Continue without music
+                }
+            }
+
+            startTimer()
+        }
+    }
 
     nonisolated func didComplete() {
         Task { @MainActor in
