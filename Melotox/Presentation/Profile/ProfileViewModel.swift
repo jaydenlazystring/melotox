@@ -4,6 +4,7 @@ import Foundation
 final class ProfileViewModel: ObservableObject {
 
     @Published var displayName: String = ""
+    @Published var username: String = ""
     @Published var email: String = ""
     @Published var providerName: String = ""
     @Published var joinedDate: String = ""
@@ -17,6 +18,7 @@ final class ProfileViewModel: ObservableObject {
 
     func loadUser(_ user: User) {
         displayName = user.displayName
+        username = user.username ?? user.displayName
         email = user.email
         providerName = user.provider == .apple ? "Apple" : "Google"
 

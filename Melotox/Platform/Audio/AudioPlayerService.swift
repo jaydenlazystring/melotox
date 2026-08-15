@@ -29,6 +29,17 @@ final class AudioPlayerService: @unchecked Sendable {
         player?.isPlaying ?? false
     }
 
+    /// A normalized (0...1) representation of the current output loudness,
+    /// derived from the player's average power meter. Returns 0 when idle.
+    var level: Float {
+        guard let player, player.isPlaying else { return 0 }
+        player.updateMeters()
+        let db = player.averagePower(forChannel: 0) // roughly -160...0 dBFS
+        let floorDb: Float = -50
+        guard db > floorDb else { return 0 }
+        return min(max((db - floorDb) / -floorDb, 0), 1)
+    }
+
     // MARK: - Init
 
     init() {}
@@ -47,8 +58,14 @@ final class AudioPlayerService: @unchecked Sendable {
             throw AudioPlayerError.fileNotFound(name: fileName)
         }
 
+        // Configure the session so playback is audible and metering is accurate.
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default)
+        try? session.setActive(true)
+
         do {
             let audioPlayer = try AVAudioPlayer(contentsOf: url)
+            audioPlayer.isMeteringEnabled = true
             audioPlayer.prepareToPlay()
             audioPlayer.play()
             player = audioPlayer

@@ -23,6 +23,14 @@ configFiles:
   Debug: Config/Debug.xcconfig
   Release: Config/Release.xcconfig
 
+packages:
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk.git
+    from: "11.0.0"
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS.git
+    from: "8.0.0"
+
 targets:
   Melotox:
     type: application
@@ -41,6 +49,11 @@ targets:
         optional: true
       - path: Melotox/Resources/Localizable
         buildPhase: resources
+      # Drop the Firebase config here (Firebase console → iOS app). Optional so
+      # the project still builds before Firebase is set up.
+      - path: Melotox/GoogleService-Info.plist
+        buildPhase: resources
+        optional: true
     info:
       path: Melotox/Info.plist
       properties:
@@ -51,6 +64,11 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UIUserInterfaceStyle: Dark
+        # Google Sign-In redirect. Replace REVERSED_CLIENT_ID with the value
+        # from GoogleService-Info.plist (looks like com.googleusercontent.apps.XXXX).
+        CFBundleURLTypes:
+          - CFBundleURLSchemes:
+              - REVERSED_CLIENT_ID
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.melotox.app
@@ -64,12 +82,22 @@ targets:
         Release:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: RELEASE
           SWIFT_OPTIMIZATION_LEVEL: -O
-    dependencies: []
+    dependencies:
+      - package: Firebase
+        product: FirebaseCore
+      - package: Firebase
+        product: FirebaseAuth
+      - package: Firebase
+        product: FirebaseFirestore
+      - package: GoogleSignIn
+        product: GoogleSignIn
     entitlements:
       path: Melotox/Melotox.entitlements
       properties:
         com.apple.security.application-groups:
           - group.com.melotox.app
+        com.apple.developer.applesignin:
+          - Default
 
 schemes:
   Melotox:

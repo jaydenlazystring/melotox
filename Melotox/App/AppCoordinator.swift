@@ -6,6 +6,7 @@ import SwiftUI
 enum AppRoute: Equatable, Sendable {
     case onboarding
     case login
+    case usernameSetup
     case home
     case profile
     case about
@@ -47,6 +48,13 @@ final class AppCoordinator: ObservableObject {
     func handleLoginSuccess(_ user: User) {
         currentUser = user
         isAuthenticated = true
+        // New users pick a handle before entering the app.
+        currentRoute = (user.username?.isEmpty ?? true) ? .usernameSetup : .home
+    }
+
+    /// Called once the user has chosen a handle during onboarding.
+    func completeUsernameSetup(_ updatedUser: User) {
+        currentUser = updatedUser
         currentRoute = .home
     }
 

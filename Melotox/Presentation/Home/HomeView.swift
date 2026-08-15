@@ -17,7 +17,7 @@ struct HomeView: View {
                     // MARK: - Greeting + Profile
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Hello, \(viewModel.userName)")
+                            Text("@\(viewModel.username)")
                                 .font(.title)
                                 .fontWeight(.bold)
                                 .foregroundStyle(.white)
@@ -152,6 +152,7 @@ struct HomeView: View {
                 restrictionRepository: PreviewRestrictionRepository()
             )
             vm.userName = "Jayden"
+            vm.username = "jayden"
             vm.restrictedAppsCount = 5
             vm.isRestrictionActive = true
             return vm

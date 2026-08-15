@@ -2,6 +2,9 @@ import SwiftUI
 
 struct AppSelectionView: View {
     @ObservedObject var viewModel: AppSelectionViewModel
+    /// When set, shows a button that previews the block/intervention flow
+    /// (useful in Simulator where real Screen Time restrictions can't run).
+    var onPreviewBlock: (() -> Void)? = nil
 
     var body: some View {
         ZStack {
@@ -50,10 +53,15 @@ struct AppSelectionView: View {
                         .padding(.top, 8)
                 }
 
-                // MARK: - Save Button
-                MelotoxButton(title: "Save", action: viewModel.saveSelection, style: .primary)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
+                // MARK: - Actions
+                VStack(spacing: 10) {
+                    if let onPreviewBlock {
+                        MelotoxButton(title: "Preview Block Screen", action: onPreviewBlock, style: .secondary)
+                    }
+                    MelotoxButton(title: "Save", action: viewModel.saveSelection, style: .primary)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
             }
         }
         .onAppear {

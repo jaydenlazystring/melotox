@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(GoogleSignIn)
+import GoogleSignIn
+#endif
 
 @main
 struct MelotoxApp: App {
@@ -16,6 +19,11 @@ struct MelotoxApp: App {
                 }
             }
             .animation(.easeInOut, value: coordinator.isAuthenticated)
+            .onOpenURL { url in
+                #if canImport(GoogleSignIn)
+                _ = GIDSignIn.sharedInstance.handle(url)
+                #endif
+            }
         }
     }
 
@@ -25,7 +33,7 @@ struct MelotoxApp: App {
     private var unauthenticatedContent: some View {
         switch coordinator.currentRoute {
         case .login:
-            LoginView(viewModel: container.makeLoginViewModel())
+            LoginScreen(coordinator: coordinator, container: container)
                 .overlay(alignment: .bottom) {
                     #if DEBUG
                     mockLoginButton
@@ -41,7 +49,17 @@ struct MelotoxApp: App {
 
     // MARK: - Authenticated Flow
 
+    @ViewBuilder
     private var authenticatedContent: some View {
+        // Gate the app behind username selection for brand-new accounts.
+        if case .usernameSetup = coordinator.currentRoute {
+            UsernameSetupScreen(coordinator: coordinator, container: container)
+        } else {
+            mainContent
+        }
+    }
+
+    private var mainContent: some View {
         ZStack {
             // Base: Tab bar with Home / Activity / Settings
             tabbedContent
@@ -50,7 +68,7 @@ struct MelotoxApp: App {
             if let overlayRoute = coordinator.overlayRoute {
                 overlayContent(for: overlayRoute)
                     .transition(.move(edge: .trailing))
-                    .zIndex(1)
+                    .zIndex(2) // above route screens (appSelection/profile/about)
             }
 
             if case .profile = coordinator.currentRoute {
@@ -72,7 +90,8 @@ struct MelotoxApp: App {
                 AppSelectionScreen(
                     container: container,
                     onBack: { coordinator.navigateTo(.home) },
-                    onSaved: { coordinator.navigateTo(.home) }
+                    onSaved: { coordinator.navigateTo(.home) },
+                    onPreviewBlock: { coordinator.startIntervention(for: "com.mock.preview") }
                 )
                 .transition(.move(edge: .trailing))
                 .zIndex(1)
@@ -133,10 +152,11 @@ struct MelotoxApp: App {
     private var mockLoginButton: some View {
         Button {
             let mockUser = User(
-                id: UUID(),
+                id: UUID().uuidString,
                 provider: .apple,
                 email: "test@melotox.com",
                 displayName: "Tester",
+                username: "tester",
                 createdAt: Date()
             )
             coordinator.handleLoginSuccess(mockUser)
@@ -156,6 +176,49 @@ struct MelotoxApp: App {
 }
 
 // MARK: - Wrapper Screens
+
+private struct LoginScreen: View {
+    let coordinator: AppCoordinator
+    let container: DependencyContainer
+
+    @StateObject private var viewModel: LoginViewModel
+
+    init(coordinator: AppCoordinator, container: DependencyContainer) {
+        self.coordinator = coordinator
+        self.container = container
+        _viewModel = StateObject(wrappedValue: container.makeLoginViewModel())
+    }
+
+    var body: some View {
+        LoginView(viewModel: viewModel)
+            .onChange(of: viewModel.user) { _, user in
+                if let user { coordinator.handleLoginSuccess(user) }
+            }
+    }
+}
+
+private struct UsernameSetupScreen: View {
+    let coordinator: AppCoordinator
+    let container: DependencyContainer
+
+    @StateObject private var viewModel: UsernameSetupViewModel
+
+    init(coordinator: AppCoordinator, container: DependencyContainer) {
+        self.coordinator = coordinator
+        self.container = container
+        let uid = coordinator.currentUser?.id ?? ""
+        _viewModel = StateObject(wrappedValue: container.makeUsernameSetupViewModel(uid: uid))
+    }
+
+    var body: some View {
+        UsernameSetupView(viewModel: viewModel)
+            .onChange(of: viewModel.didComplete) { _, done in
+                if done, let user = viewModel.completedUser {
+                    coordinator.completeUsernameSetup(user)
+                }
+            }
+    }
+}
 
 private struct HomeScreen: View {
     let coordinator: AppCoordinator
@@ -321,18 +384,20 @@ private struct AppSelectionScreen: View {
     let container: DependencyContainer
     let onBack: () -> Void
     let onSaved: () -> Void
+    let onPreviewBlock: () -> Void
 
     @StateObject private var viewModel: AppSelectionViewModel
 
-    init(container: DependencyContainer, onBack: @escaping () -> Void, onSaved: @escaping () -> Void) {
+    init(container: DependencyContainer, onBack: @escaping () -> Void, onSaved: @escaping () -> Void, onPreviewBlock: @escaping () -> Void) {
         self.container = container
         self.onBack = onBack
         self.onSaved = onSaved
+        self.onPreviewBlock = onPreviewBlock
         _viewModel = StateObject(wrappedValue: container.makeAppSelectionViewModel())
     }
 
     var body: some View {
-        AppSelectionView(viewModel: viewModel)
+        AppSelectionView(viewModel: viewModel, onPreviewBlock: onPreviewBlock)
             .overlay(alignment: .topLeading) {
                 Button(action: onBack) {
                     HStack(spacing: 4) {

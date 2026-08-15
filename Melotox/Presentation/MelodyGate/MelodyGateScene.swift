@@ -35,6 +35,11 @@ final class MelodyGateScene: SKScene {
 
     weak var gateDelegate: MelodyGateSceneDelegate?
 
+    /// Target audio loudness (0...1) pushed in from the view model. The scene
+    /// smooths toward this each frame so the halo/indicator pulse with the music.
+    var audioLevel: CGFloat = 0
+    private var smoothedAudioLevel: CGFloat = 0
+
     // MARK: - Nodes
 
     private var targetIndicator: SKShapeNode?
@@ -62,6 +67,8 @@ final class MelodyGateScene: SKScene {
         missFrames = 0
         isTouching = false
         fingerPosition = .zero
+        audioLevel = 0
+        smoothedAudioLevel = 0
 
         targetIndicator = nil
         targetGlow = nil
@@ -105,6 +112,11 @@ final class MelodyGateScene: SKScene {
         }
 
         let elapsed = currentTime - (sceneStartTime ?? currentTime)
+
+        // Audio-reactive pulse — smooth toward the latest level for 60fps fluidity.
+        smoothedAudioLevel += (audioLevel - smoothedAudioLevel) * 0.2
+        targetGlow?.setScale(1.0 + smoothedAudioLevel * 0.7)
+        targetIndicator?.setScale(1.0 + smoothedAudioLevel * 0.22)
 
         if elapsed >= gateDuration {
             isRunning = false

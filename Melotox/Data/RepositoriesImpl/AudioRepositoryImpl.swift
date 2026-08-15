@@ -44,4 +44,8 @@ final class AudioRepositoryImpl: AudioRepository, @unchecked Sendable {
     func currentPlaybackTime() -> TimeInterval {
         audioPlayer.currentTime
     }
+
+    func currentLevel() -> Float {
+        audioPlayer.level
+    }
 }

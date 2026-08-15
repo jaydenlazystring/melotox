@@ -108,11 +108,11 @@ struct LoginView: View {
 
 private struct PreviewAuthRepository: AuthRepository {
     func signInWithGoogle() async throws -> User {
-        User(id: UUID(), provider: .google, email: "test@test.com", displayName: "Test", createdAt: Date())
+        User(id: UUID().uuidString, provider: .google, email: "test@test.com", displayName: "Test", username: "test", createdAt: Date())
     }
 
     func signInWithApple() async throws -> User {
-        User(id: UUID(), provider: .apple, email: "test@test.com", displayName: "Test", createdAt: Date())
+        User(id: UUID().uuidString, provider: .apple, email: "test@test.com", displayName: "Test", username: "test", createdAt: Date())
     }
 
     func restoreSession() async throws -> User? { nil }

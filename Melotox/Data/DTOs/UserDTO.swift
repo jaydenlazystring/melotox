@@ -1,10 +1,11 @@
 import Foundation
 
 struct UserDTO: Codable, Sendable {
-    let id: UUID
+    let id: String
     let provider: String
     let email: String
     let displayName: String
+    var username: String?
     let createdAt: Date
 
     func toEntity() -> User {
@@ -13,6 +14,7 @@ struct UserDTO: Codable, Sendable {
             provider: AuthProvider(rawValue: provider) ?? .google,
             email: email,
             displayName: displayName,
+            username: username,
             createdAt: createdAt
         )
     }
@@ -23,6 +25,7 @@ struct UserDTO: Codable, Sendable {
             provider: user.provider.rawValue,
             email: user.email,
             displayName: user.displayName,
+            username: user.username,
             createdAt: user.createdAt
         )
     }

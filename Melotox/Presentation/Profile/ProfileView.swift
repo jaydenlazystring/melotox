@@ -35,14 +35,18 @@ struct ProfileView: View {
                                 .font(.system(size: 80))
                                 .foregroundStyle(Color(hex: "7C3AED"))
 
-                            Text(viewModel.displayName)
+                            Text("@\(viewModel.username)")
                                 .font(.title2)
                                 .fontWeight(.bold)
                                 .foregroundStyle(.white)
 
-                            Text(viewModel.email)
+                            Text(viewModel.displayName)
                                 .font(.subheadline)
-                                .foregroundStyle(Color.white.opacity(0.5))
+                                .foregroundStyle(Color.white.opacity(0.7))
+
+                            Text(viewModel.email)
+                                .font(.caption)
+                                .foregroundStyle(Color.white.opacity(0.4))
                         }
                         .padding(.top, 24)
 

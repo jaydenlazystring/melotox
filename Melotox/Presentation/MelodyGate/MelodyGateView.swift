@@ -48,10 +48,16 @@ struct MelodyGateView: View {
 
                     Spacer()
 
-                    if let track = viewModel.currentTrack {
-                        Text(track.title)
+                    VStack(spacing: 8) {
+                        Text(viewModel.relaxPhrase)
                             .font(.headline)
+                            .multilineTextAlignment(.center)
                             .foregroundStyle(Color(hex: "A78BFA"))
+                            .id(viewModel.relaxPhrase)
+                            .transition(.opacity)
+                            .animation(.easeInOut(duration: 0.7), value: viewModel.relaxPhrase)
+
+                        EqualizerBarView(level: viewModel.audioLevel)
                     }
 
                     Spacer()
@@ -149,6 +155,33 @@ struct MelodyGateView: View {
     }
 }
 
+// MARK: - Equalizer Bar
+
+/// A small "now playing" indicator whose bars react to the current audio level.
+private struct EqualizerBarView: View {
+    let level: CGFloat
+
+    private let barCount = 5
+    // Per-bar weighting so bars don't all move in lockstep.
+    private let weights: [CGFloat] = [0.55, 0.85, 1.0, 0.75, 0.5]
+    private let minHeight: CGFloat = 3
+    private let maxHeight: CGFloat = 16
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 3) {
+            ForEach(0..<barCount, id: \.self) { index in
+                let weight = weights[index % weights.count]
+                let height = minHeight + (maxHeight - minHeight) * min(max(level * weight, 0), 1)
+                Capsule()
+                    .fill(Color(hex: "A78BFA").opacity(0.8))
+                    .frame(width: 3, height: height)
+            }
+        }
+        .frame(height: maxHeight)
+        .animation(.easeOut(duration: 0.08), value: level)
+    }
+}
+
 #Preview {
     MelodyGateView(
         viewModel: {
@@ -186,4 +219,5 @@ private struct PreviewAudioRepo: AudioRepository {
     func playTrack(_ track: AudioTrack) async throws {}
     func stopPlayback() {}
     func currentPlaybackTime() -> TimeInterval { 0 }
+    func currentLevel() -> Float { 0 }
 }

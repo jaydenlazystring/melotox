@@ -117,4 +117,5 @@ private struct PreviewAudioRepo: AudioRepository {
     func playTrack(_ track: AudioTrack) async throws {}
     func stopPlayback() {}
     func currentPlaybackTime() -> TimeInterval { 0 }
+    func currentLevel() -> Float { 0 }
 }

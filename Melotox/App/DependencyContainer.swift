@@ -14,6 +14,15 @@ final class DependencyContainer {
 
     // MARK: - Data Repositories
 
+    private(set) lazy var userProfileRepository: any UserProfileRepository = {
+        #if canImport(FirebaseFirestore)
+        if FirebaseConfigurator.isAvailable {
+            return FirebaseUserProfileRepository()
+        }
+        #endif
+        return LocalUserProfileRepository()
+    }()
+
     private(set) lazy var authRepository: AuthRepositoryImpl = {
         let googleAuth = GoogleAuthService()
         let appleSignIn = AppleSignInService()
@@ -21,7 +30,8 @@ final class DependencyContainer {
         return AuthRepositoryImpl(
             googleAuth: googleAuth,
             appleSignIn: appleSignIn,
-            sessionStorage: storage
+            sessionStorage: storage,
+            userProfileRepository: userProfileRepository
         )
     }()
 
@@ -56,6 +66,14 @@ final class DependencyContainer {
         RestoreSessionUseCase(authRepository: authRepository)
     }()
 
+    private(set) lazy var checkUsernameAvailabilityUseCase: CheckUsernameAvailabilityUseCase = {
+        CheckUsernameAvailabilityUseCase(repository: userProfileRepository)
+    }()
+
+    private(set) lazy var setUsernameUseCase: SetUsernameUseCase = {
+        SetUsernameUseCase(repository: userProfileRepository)
+    }()
+
     private(set) lazy var startInterventionUseCase: StartInterventionUseCase = {
         StartInterventionUseCase(
             sessionRepository: sessionRepository,
@@ -88,6 +106,9 @@ final class DependencyContainer {
     // MARK: - Init
 
     init(screenTimeManager: any ScreenTimeManaging = MockScreenTimeManager()) {
+        // Start Firebase before any repository is lazily resolved so the
+        // backend-vs-local decision in `userProfileRepository` is correct.
+        FirebaseConfigurator.configure()
         self.keychainService = KeychainService()
         self.screenTimeManager = screenTimeManager
     }
@@ -140,6 +161,14 @@ final class DependencyContainer {
 
     func makeProfileViewModel() -> ProfileViewModel {
         ProfileViewModel(authRepository: authRepository)
+    }
+
+    func makeUsernameSetupViewModel(uid: String) -> UsernameSetupViewModel {
+        UsernameSetupViewModel(
+            uid: uid,
+            checkUseCase: checkUsernameAvailabilityUseCase,
+            setUseCase: setUsernameUseCase
+        )
     }
 }
 

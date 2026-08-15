@@ -6,6 +6,8 @@ final class HomeViewModel: ObservableObject {
     // MARK: - Published State
 
     @Published var userName: String = ""
+    /// The user's @handle (without the "@"), falling back to display name.
+    @Published var username: String = ""
     @Published var restrictedAppsCount: Int = 0
     @Published var isRestrictionActive: Bool = false
     @Published var errorMessage: String?
@@ -28,6 +30,7 @@ final class HomeViewModel: ObservableObject {
 
     func loadProfile(user: User) {
         userName = user.displayName
+        username = user.username ?? user.displayName
 
         Task {
             do {
